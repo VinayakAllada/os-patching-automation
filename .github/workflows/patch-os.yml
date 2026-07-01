@@ -1,0 +1,17 @@
+name: Patch OS Workflow
+
+on:
+    repository_dispatch: 
+        types: 
+            - patch-os
+
+jobs:
+    test:
+        runs-on: self-hosted
+
+        steps:
+            - name: Print Payload
+              run: |
+                echo "Workflow triggered"
+                echo "Change number: ${{github.event.client_payload.number}}"
+                echo "Sys ID: ${{github.event.client_payload.sys_id}}"
