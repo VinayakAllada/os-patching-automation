@@ -1,0 +1,8 @@
+*.pem
+*.key
+.env
+.terraform
+terraform.tfstate
+terraform.tfstate.backup
+.vscode/settings.json
+inventory.ini
