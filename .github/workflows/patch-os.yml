@@ -12,6 +12,13 @@ jobs:
         steps:
             - name: Print Payload
               run: |
-                echo "Workflow triggered"
-                echo "Change number: ${{github.event.client_payload.number}}"
-                echo "Sys ID: ${{github.event.client_payload.sys_id}}"
+                echo "🚀 Workflow triggered from ServiceNow!"
+                echo "Change Number: ${{ github.event.client_payload.number }}"
+                echo "Sys ID: ${{ github.event.client_payload.sys_id }}"
+                echo "VM Name: ${{ github.event.client_payload.vm_name }}"
+                echo "VM IP: ${{ github.event.client_payload.vm_ip }}"
+                echo "SSH User: ${{ github.event.client_payload.ssh_user }}"
+                echo "Environment: ${{ github.event.client_payload.environment }}"
+                echo "Resource Group: ${{ github.event.client_payload.resource_group }}"
+                echo "Snapshot Required: ${{ github.event.client_payload.snapshot_required }}"
+                echo "Reboot After Patch: ${{ github.event.client_payload.reboot_after_patch }}"
