@@ -25,6 +25,7 @@ jobs:
 
             - name: Create Azure Snapshot
               if: ${{ github.event.client_payload.snapshot_required == 'true' }}
+              shell: bash
               run: |
                 echo "📸 Snapshot requested. Creating OS disk snapshot for ${{ github.event.client_payload.vm_name }}..."
                 
@@ -33,7 +34,7 @@ jobs:
                   -g "${{ github.event.client_payload.resource_group }}" \
                   -n "${{ github.event.client_payload.vm_name }}" \
                   --query "storageProfile.osDisk.managedDisk.id" \
-                  -o tsv)
+                  -o tsv | tr -d '\r')
                   
                 if [ -z "$OS_DISK_ID" ]; then
                   echo "❌ Could not find OS Disk for VM. Snapshot failed."
@@ -52,25 +53,30 @@ jobs:
                 echo "✅ Snapshot $SNAPSHOT_NAME created successfully."
 
             - name: Setup SSH Key
+              shell: bash
               run: |
                 mkdir -p ~/.ssh
                 echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_rsa
                 chmod 600 ~/.ssh/id_rsa
-                # Ensure the ssh-agent is running and add the key (helpful for some ansible configurations)
-                eval $(ssh-agent -s)
-                ssh-add ~/.ssh/id_rsa
 
-            - name: Run Ansible Patching Playbook
-              env:
-                ANSIBLE_CONFIG: ./ansible/ansible.cfg
-                ANSIBLE_HOST_KEY_CHECKING: "False"
+            - name: Run OS Patching via SSH
+              shell: bash
               run: |
-                echo "🚀 Starting Ansible OS Patching..."
+                echo "🚀 Starting OS Patching..."
                 
-                # Create a dynamic inventory file for this single run
-                echo "[target_vm]" > inventory.ini
-                echo "${{ github.event.client_payload.vm_ip }} ansible_user=${{ github.event.client_payload.ssh_user }} ansible_ssh_private_key_file=~/.ssh/id_rsa" >> inventory.ini
+                ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ${{ github.event.client_payload.ssh_user }}@${{ github.event.client_payload.vm_ip }} << 'EOF'
+                  set -e
+                  echo "Current Kernel: $(uname -r)"
+                  
+                  sudo apt-get update -y
+                  sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y dist
+                  
+                  if [ -f /var/run/reboot-required ] && [ "${{ github.event.client_payload.reboot_after_patch }}" == "true" ]; then
+                    echo "Reboot required and authorized. Initiating reboot..."
+                    sudo reboot &
+                  else
+                    echo "No reboot required or authorized."
+                  fi
+                EOF
                 
-                # Run the playbook
-                ansible-playbook -i inventory.ini ansible/patch.yml \
-                  --extra-vars "reboot_after_patch=${{ github.event.client_payload.reboot_after_patch }}"
+                echo "✅ Patching complete!"
