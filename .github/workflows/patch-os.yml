@@ -81,8 +81,8 @@ jobs:
                 echo "📋 Preparing compliance report for ServiceNow..."
                 
                 # Check if compliance report was generated
-                if [ -f compliance_report.json ]; then
-                  REPORT=$(cat compliance_report.json)
+                if [ -f ansible/compliance_report.json ]; then
+                  REPORT=$(cat ansible/compliance_report.json)
                   NOTES="Automated OS Patching Completed Successfully!\\n\\nCompliance Report:\\n$REPORT"
                   STATE=3 # Closed
                   CLOSE_CODE="successful"
