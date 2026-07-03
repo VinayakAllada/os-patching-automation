@@ -22,3 +22,55 @@ jobs:
                 echo "Resource Group: ${{ github.event.client_payload.resource_group }}"
                 echo "Snapshot Required: ${{ github.event.client_payload.snapshot_required }}"
                 echo "Reboot After Patch: ${{ github.event.client_payload.reboot_after_patch }}"
+
+            - name: Create Azure Snapshot
+              if: ${{ github.event.client_payload.snapshot_required == 'true' }}
+              run: |
+                echo "📸 Snapshot requested. Creating OS disk snapshot for ${{ github.event.client_payload.vm_name }}..."
+                
+                # Get the OS Disk ID of the VM
+                OS_DISK_ID=$(az vm show \
+                  -g "${{ github.event.client_payload.resource_group }}" \
+                  -n "${{ github.event.client_payload.vm_name }}" \
+                  --query "storageProfile.osDisk.managedDisk.id" \
+                  -o tsv)
+                  
+                if [ -z "$OS_DISK_ID" ]; then
+                  echo "❌ Could not find OS Disk for VM. Snapshot failed."
+                  exit 1
+                fi
+                
+                SNAPSHOT_NAME="snap-${{ github.event.client_payload.vm_name }}-$(date +%s)"
+                
+                # Create the Snapshot in the same Resource Group
+                az snapshot create \
+                  -g "${{ github.event.client_payload.resource_group }}" \
+                  -n "$SNAPSHOT_NAME" \
+                  --source "$OS_DISK_ID" \
+                  --query "id" -o tsv
+                  
+                echo "✅ Snapshot $SNAPSHOT_NAME created successfully."
+
+            - name: Setup SSH Key
+              run: |
+                mkdir -p ~/.ssh
+                echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_rsa
+                chmod 600 ~/.ssh/id_rsa
+                # Ensure the ssh-agent is running and add the key (helpful for some ansible configurations)
+                eval $(ssh-agent -s)
+                ssh-add ~/.ssh/id_rsa
+
+            - name: Run Ansible Patching Playbook
+              env:
+                ANSIBLE_CONFIG: ./ansible/ansible.cfg
+                ANSIBLE_HOST_KEY_CHECKING: "False"
+              run: |
+                echo "🚀 Starting Ansible OS Patching..."
+                
+                # Create a dynamic inventory file for this single run
+                echo "[target_vm]" > inventory.ini
+                echo "${{ github.event.client_payload.vm_ip }} ansible_user=${{ github.event.client_payload.ssh_user }} ansible_ssh_private_key_file=~/.ssh/id_rsa" >> inventory.ini
+                
+                # Run the playbook
+                ansible-playbook -i inventory.ini ansible/patch.yml \
+                  --extra-vars "reboot_after_patch=${{ github.event.client_payload.reboot_after_patch }}"
