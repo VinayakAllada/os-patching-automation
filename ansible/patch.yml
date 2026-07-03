@@ -53,3 +53,10 @@
     - name: Output compliance report (for GitHub Actions to capture)
       debug:
         msg: "COMPLIANCE_REPORT: {{ patch_report | to_json }}"
+
+    - name: Save compliance report to file
+      local_action:
+        module: copy
+        content: "{{ patch_report | to_nice_json }}"
+        dest: compliance_report.json
+      become: no

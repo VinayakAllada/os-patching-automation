@@ -74,3 +74,45 @@ jobs:
                 # Run the playbook
                 ansible-playbook -i inventory.ini ansible/patch.yml \
                   --extra-vars "reboot_after_patch=${{ github.event.client_payload.reboot_after_patch }}"
+
+            - name: Update ServiceNow and Close Ticket
+              if: always()
+              run: |
+                echo "📋 Preparing compliance report for ServiceNow..."
+                
+                # Check if compliance report was generated
+                if [ -f compliance_report.json ]; then
+                  REPORT=$(cat compliance_report.json)
+                  NOTES="Automated OS Patching Completed Successfully!\\n\\nCompliance Report:\\n$REPORT"
+                  STATE=3 # Closed
+                  CLOSE_CODE="successful"
+                else
+                  NOTES="Automated OS Patching Pipeline Failed or did not complete. Please check GitHub Actions logs."
+                  STATE=4 # Canceled or you can leave it as Implement and just update notes
+                  CLOSE_CODE="unsuccessful"
+                fi
+                
+                echo "Payload to send:"
+                echo "$NOTES"
+                
+                # Create JSON payload for ServiceNow (escaping newlines)
+                JSON_PAYLOAD=$(jq -n \
+                  --arg notes "$NOTES" \
+                  --arg state "$STATE" \
+                  --arg code "$CLOSE_CODE" \
+                  '{
+                    work_notes: $notes,
+                    close_notes: $notes,
+                    state: $state,
+                    close_code: $code
+                  }')
+                  
+                echo "🚀 Sending update to ServiceNow..."
+                
+                curl -X PATCH "https://dev403266.service-now.com/api/now/table/change_request/${{ github.event.client_payload.sys_id }}" \
+                  -H "Accept: application/json" \
+                  -H "Content-Type: application/json" \
+                  --user "${{ secrets.SN_USERNAME }}:${{ secrets.SN_PASSWORD }}" \
+                  -d "$JSON_PAYLOAD"
+                  
+                echo "✅ ServiceNow ticket updated!"
