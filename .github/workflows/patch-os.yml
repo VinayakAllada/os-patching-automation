@@ -25,7 +25,6 @@ jobs:
 
             - name: Create Azure Snapshot
               if: ${{ github.event.client_payload.snapshot_required == 'true' }}
-              shell: bash
               run: |
                 echo "📸 Snapshot requested. Creating OS disk snapshot for ${{ github.event.client_payload.vm_name }}..."
                 
@@ -53,30 +52,22 @@ jobs:
                 echo "✅ Snapshot $SNAPSHOT_NAME created successfully."
 
             - name: Setup SSH Key
-              shell: bash
               run: |
                 mkdir -p ~/.ssh
                 echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_rsa
                 chmod 600 ~/.ssh/id_rsa
 
-            - name: Run OS Patching via SSH
-              shell: bash
+            - name: Run Ansible Patching Playbook
+              env:
+                ANSIBLE_CONFIG: ./ansible/ansible.cfg
+                ANSIBLE_HOST_KEY_CHECKING: "False"
               run: |
-                echo "🚀 Starting OS Patching..."
+                echo "🚀 Starting Ansible OS Patching..."
                 
-                ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ${{ github.event.client_payload.ssh_user }}@${{ github.event.client_payload.vm_ip }} << 'EOF'
-                  set -e
-                  echo "Current Kernel: $(uname -r)"
-                  
-                  sudo apt-get update -y
-                  sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y dist
-                  
-                  if [ -f /var/run/reboot-required ] && [ "${{ github.event.client_payload.reboot_after_patch }}" == "true" ]; then
-                    echo "Reboot required and authorized. Initiating reboot..."
-                    sudo reboot &
-                  else
-                    echo "No reboot required or authorized."
-                  fi
-                EOF
+                # Create a dynamic inventory file for this single run
+                echo "[target_vm]" > inventory.ini
+                echo "${{ github.event.client_payload.vm_ip }} ansible_user=${{ github.event.client_payload.ssh_user }} ansible_ssh_private_key_file=~/.ssh/id_rsa" >> inventory.ini
                 
-                echo "✅ Patching complete!"
+                # Run the playbook
+                ansible-playbook -i inventory.ini ansible/patch.yml \
+                  --extra-vars "reboot_after_patch=${{ github.event.client_payload.reboot_after_patch }}"
